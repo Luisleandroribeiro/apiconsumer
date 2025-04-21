@@ -9,7 +9,5 @@ public interface EstacaoRepository extends JpaRepository<Estacao, Long> {
 
     List<Estacao> findByUfEstacao(String ufEstacao);
 
-    List<Estacao> findByTipoEstacaoIgnoreCase(String tipoEstacao);
-
     List<Estacao> findByUfEstacaoAndTipoEstacao(String ufEstacao, String tipoEstacao);
 }

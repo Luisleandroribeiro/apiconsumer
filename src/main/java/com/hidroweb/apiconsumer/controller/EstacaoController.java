@@ -2,7 +2,6 @@ package com.hidroweb.apiconsumer.controller;
 
 import com.hidroweb.apiconsumer.entity.Estacao;
 import com.hidroweb.apiconsumer.repository.EstacaoRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -11,8 +10,12 @@ import java.util.List;
 @RequestMapping("/estacoes")
 public class EstacaoController {
 
-    @Autowired
-    private EstacaoRepository estacaoRepository;
+    private final EstacaoRepository estacaoRepository;
+
+    public EstacaoController(EstacaoRepository estacaoRepository) {
+        this.estacaoRepository = estacaoRepository;
+    }
+
 
     @GetMapping("/listarTodas")
     public List<Estacao> listarTodas() {
@@ -22,11 +25,6 @@ public class EstacaoController {
     @GetMapping("/uf/{uf}")
     public List<Estacao> listarPorUF(@PathVariable String uf) {
         return estacaoRepository.findByUfEstacao(uf.toUpperCase());
-    }
-
-    @GetMapping("/tipo/{tipo}")
-    public List<Estacao> listarPorTipo(@PathVariable String tipo) {
-        return estacaoRepository.findByTipoEstacaoIgnoreCase(tipo);
     }
 
     @GetMapping("/filtrar")

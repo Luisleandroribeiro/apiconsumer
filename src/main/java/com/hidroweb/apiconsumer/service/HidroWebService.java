@@ -3,11 +3,12 @@ package com.hidroweb.apiconsumer.service;
 import com.hidroweb.apiconsumer.client.HidroWebClient;
 import com.hidroweb.apiconsumer.config.HidroWebConfig;
 import com.hidroweb.apiconsumer.entity.Estacao;
+import com.hidroweb.apiconsumer.exception.AutenticacaoHidroWebException;
 import com.hidroweb.apiconsumer.repository.EstacaoRepository;
 import com.hidroweb.apiconsumer.utils.TokenManager;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -18,66 +19,78 @@ public class HidroWebService {
     private final HidroWebClient hidroWebClient;
     private final HidroWebConfig hidroWebConfig;
     private final TokenManager tokenManager;
+    private final EstacaoRepository estacaoRepository;
+    private static final Logger logger = LoggerFactory.getLogger(HidroWebService.class);
+    private static final String ITEMS_KEY = "items";
+    private static final String AUTHENTICATION_TOKEN = "tokenautenticacao";
 
-    public HidroWebService(HidroWebClient hidroWebClient, HidroWebConfig hidroWebConfig, TokenManager tokenManager) {
+    public HidroWebService(HidroWebClient hidroWebClient,
+                           HidroWebConfig hidroWebConfig,
+                           TokenManager tokenManager,
+                           EstacaoRepository estacaoRepository) {
         this.hidroWebClient = hidroWebClient;
         this.hidroWebConfig = hidroWebConfig;
         this.tokenManager = tokenManager;
+        this.estacaoRepository = estacaoRepository;
     }
-    @Autowired
-    private EstacaoRepository estacaoRepository;
+
     public Map<String, Object> autenticarUsuario() {
-        // Verificar se o token é válido
         Optional<String> tokenOpt = tokenManager.getToken();
 
-        // Se o token não estiver presente ou estiver expirado, realiza a autenticação novamente
         if (tokenOpt.isEmpty()) {
-            System.out.println("Token expirado ou inexistente. Realizando nova autenticação...");
+            logger.info("Token expirado ou inexistente. Realizando nova autenticação...");
             Map<String, Object> resposta = hidroWebClient.autenticar(hidroWebConfig.getIdentificador(), hidroWebConfig.getSenha());
 
-            System.out.println("Resposta da API: " + resposta);
+            logger.debug("Resposta da API: {}", resposta);
 
-            // Verificar se a resposta foi bem-sucedida e se o token está presente dentro de "items"
-            if (resposta != null && resposta.containsKey("items")) {
-                Map<String, Object> items = (Map<String, Object>) resposta.get("items");
-                if (items.containsKey("tokenautenticacao")) {
-                    String novoToken = (String) items.get("tokenautenticacao");
-                    tokenManager.setToken(novoToken);
-                    System.out.println("Novo token gerado: " + novoToken);
+            if (resposta != null && resposta.containsKey(ITEMS_KEY)) {
+                Object itemsObj = resposta.get(ITEMS_KEY);
+
+                if (itemsObj instanceof Map<?, ?> itemsMap) {
+                    Object tokenObj = itemsMap.get(AUTHENTICATION_TOKEN);
+
+                    if (tokenObj instanceof String novoToken) {
+                        tokenManager.setToken(novoToken);
+                        logger.info("Novo token gerado: {}", novoToken);
+                        return Map.of(AUTHENTICATION_TOKEN, novoToken);
+                    } else {
+                        logger.error("Falha na autenticação: token não encontrado na resposta");
+                        throw new AutenticacaoHidroWebException("Token não encontrado na resposta da API.");
+                    }
                 } else {
-                    throw new RuntimeException("Falha na autenticação: token não encontrado na resposta");
+                    logger.error("Falha na autenticação: estrutura de dados inesperada");
+                    throw new AutenticacaoHidroWebException("Estrutura inesperada: 'items' não é um Map.");
                 }
             } else {
-                throw new RuntimeException("Falha na autenticação: resposta inválida da API");
+                logger.error("Falha na autenticação: resposta inválida da API");
+                throw new AutenticacaoHidroWebException("Resposta inválida: chave 'items' ausente ou resposta nula.");
             }
         } else {
-            // Caso o token esteja válido, ele é retornado
-            System.out.println("Token válido: " + tokenOpt.get());
+            String token = tokenOpt.get();
+            logger.info("Token válido: {}", token);
+            return Map.of(AUTHENTICATION_TOKEN, token);
         }
-
-        // Retornar o token atual, mesmo que seja o token renovado
-        return Map.of("tokenautenticacao", (Object) tokenManager.getToken().get());
     }
-    // Método para pegar as estações de todos os estados
 
 
+
+
+    @SuppressWarnings("unchecked")
     public void getEstacoesParaTodosOsEstados(String authorization) {
         List<String> ufs = List.of("AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO");
 
         for (String uf : ufs) {
             Map<String, Object> response = hidroWebClient.getEstacoes(authorization, uf);
 
-            if (response.containsKey("items")) {
-                List<Map<String, Object>> estacoes = (List<Map<String, Object>>) response.get("items");
+            if (response.containsKey(ITEMS_KEY)) {
+                List<Map<String, Object>> estacoes = (List<Map<String, Object>>) response.get(ITEMS_KEY);
 
                 for (Map<String, Object> est : estacoes) {
                     String tipoEstacao = (String) est.get("Tipo_Estacao");
 
-                    // Verifica se o tipo de estação é "Fluviometrica"
                     if ("Fluviometrica".equalsIgnoreCase(tipoEstacao)) {
                         Long codigo = Long.parseLong(est.get("codigoestacao").toString());
 
-                        // Verifica se já existe
                         if (!estacaoRepository.existsById(codigo)) {
                             Estacao estacao = new Estacao();
                             estacao.setCodigoEstacao(codigo);
@@ -87,7 +100,7 @@ public class HidroWebService {
                             estacao.setBaciaNome((String) est.get("Bacia_Nome"));
                             estacao.setSubBaciaNome((String) est.get("Sub_Bacia_Nome"));
                             estacao.setRioNome((String) est.get("Rio_Nome"));
-                            estacao.setTipoEstacao(tipoEstacao);  // Tipo de estação sempre "Fluviometrica"
+                            estacao.setTipoEstacao(tipoEstacao);
 
                             estacaoRepository.save(estacao);
                         }
@@ -96,4 +109,5 @@ public class HidroWebService {
             }
         }
     }
+
 }
