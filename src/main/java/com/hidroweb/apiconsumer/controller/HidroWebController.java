@@ -19,4 +19,13 @@ public class HidroWebController {
     public Map<String, Object> autenticar() {
         return hidroWebService.autenticarUsuario();
     }
+
+    @GetMapping("/inventarioEstacoes")
+    public void inventario() {
+        Map<String, Object> tokenResponse = hidroWebService.autenticarUsuario();
+        String authorization = "Bearer " + tokenResponse.get("tokenautenticacao");
+
+        hidroWebService.getEstacoesParaTodosOsEstados(authorization);
+    }
+
 }
