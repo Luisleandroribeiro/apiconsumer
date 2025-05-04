@@ -1,7 +1,7 @@
 package com.hidroweb.apiconsumer.controller;
 
-import com.hidroweb.apiconsumer.entity.Estacao;
-import com.hidroweb.apiconsumer.repository.EstacaoRepository;
+import com.hidroweb.apiconsumer.entity.Station;
+import com.hidroweb.apiconsumer.repository.StationRepository;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -10,25 +10,22 @@ import java.util.List;
 @RequestMapping("/estacoes")
 public class EstacaoController {
 
-    private final EstacaoRepository estacaoRepository;
+    private final StationRepository stationRepository;
 
-    public EstacaoController(EstacaoRepository estacaoRepository) {
-        this.estacaoRepository = estacaoRepository;
+    public EstacaoController(StationRepository stationRepository) {
+        this.stationRepository = stationRepository;
     }
 
 
     @GetMapping("/listarTodas")
-    public List<Estacao> listarTodas() {
-        return estacaoRepository.findAll();
+    public List<Station> listarTodas() {
+        return stationRepository.findAll();
     }
 
     @GetMapping("/uf/{uf}")
-    public List<Estacao> listarPorUF(@PathVariable String uf) {
-        return estacaoRepository.findByUfEstacao(uf.toUpperCase());
+    public List<Station> listarPorUF(@PathVariable String uf) {
+        return stationRepository.findByUfEstacao(uf.toUpperCase());
     }
 
-    @GetMapping("/filtrar")
-    public List<Estacao> listarPorUfETipo(@RequestParam String uf, @RequestParam String tipo) {
-        return estacaoRepository.findByUfEstacaoAndTipoEstacao(uf.toUpperCase(), tipo);
-    }
+
 }

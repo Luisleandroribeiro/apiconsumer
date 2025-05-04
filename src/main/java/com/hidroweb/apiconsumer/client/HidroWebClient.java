@@ -10,13 +10,17 @@ import java.util.Map;
 @FeignClient(name = "hidroWebClient", url = "https://www.ana.gov.br/hidrowebservice")
 public interface HidroWebClient {
 
-    // Método para autenticação
     @GetMapping("/EstacoesTelemetricas/OAUth/v1")
     Map<String, Object> autenticar(@RequestHeader("Identificador") String identificador,
                                    @RequestHeader("Senha") String senha);
 
-    // Exemplo de chamada para obter as estações para um estado específico
     @GetMapping("/EstacoesTelemetricas/HidroInventarioEstacoes/v1")
     Map<String, Object> getEstacoes(@RequestHeader("Authorization") String authorization,
                                     @RequestParam("Unidade%20Federativa") String uf);
+
+    @GetMapping("/EstacoesTelemetricas/HidroSerieResumoDescarga/v1")
+    Map<String, Object> getliquidDischargeKeyCurve(
+            @RequestHeader("Authorization") String authorization,
+            @RequestParam Map<String, String> params
+    );
 }

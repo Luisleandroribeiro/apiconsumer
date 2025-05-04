@@ -1,12 +1,10 @@
 package com.hidroweb.apiconsumer.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
 
 @Entity
 @Table(name = "estacoes")
-public class Estacao {
+public class Station {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
