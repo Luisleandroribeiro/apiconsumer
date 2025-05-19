@@ -2,8 +2,10 @@ package com.hidroweb.apiconsumer.service;
 
 import com.hidroweb.apiconsumer.client.HidroWebClient;
 import com.hidroweb.apiconsumer.config.HidroWebConfig;
+import com.hidroweb.apiconsumer.dto.KeyCurveDTO;
+import com.hidroweb.apiconsumer.entity.QuotaFlow;
 import com.hidroweb.apiconsumer.entity.Station;
-import com.hidroweb.apiconsumer.exception.AutenticacaoHidroWebException;
+import com.hidroweb.apiconsumer.exception.AuthenticationHidroWebException;
 import com.hidroweb.apiconsumer.repository.StationRepository;
 import com.hidroweb.apiconsumer.utils.TokenManager;
 import org.slf4j.Logger;
@@ -55,15 +57,15 @@ public class HidroWebService {
                         return Map.of(AUTHENTICATION_TOKEN, novoToken);
                     } else {
                         logger.error("Falha na autenticação: token não encontrado na resposta");
-                        throw new AutenticacaoHidroWebException("Token não encontrado na resposta da API.");
+                        throw new AuthenticationHidroWebException("Token não encontrado na resposta da API.");
                     }
                 } else {
                     logger.error("Falha na autenticação: estrutura de dados inesperada");
-                    throw new AutenticacaoHidroWebException("Estrutura inesperada: 'items' não é um Map.");
+                    throw new AuthenticationHidroWebException("Estrutura inesperada: 'items' não é um Map.");
                 }
             } else {
                 logger.error("Falha na autenticação: resposta inválida da API");
-                throw new AutenticacaoHidroWebException("Resposta inválida: chave 'items' ausente ou resposta nula.");
+                throw new AuthenticationHidroWebException("Resposta inválida: chave 'items' ausente ou resposta nula.");
             }
         } else {
             String token = tokenOpt.get();
@@ -152,4 +154,118 @@ public class HidroWebService {
 
         return resultados;
     }
+    public KeyCurveDTO calculateKeyCurve(List<Map<String, Object>> results) {
+        List<QuotaFlow> pairs = extractValidQuotaFlows(results);
+
+        if (pairs.isEmpty()) {
+            logger.warn("Nenhum par válido (quota, flow) foi encontrado para cálculo.");
+            return new KeyCurveDTO(0, 0, 0);
+        }
+
+        double h0 = 0;
+        List<Double> logH = new ArrayList<>();
+        List<Double> logQ = new ArrayList<>();
+
+        for (QuotaFlow pair : pairs) {
+            double hFixed = pair.getQuota() - h0;
+            if (hFixed > 0) {
+                logH.add(Math.log10(hFixed));
+                logQ.add(Math.log10(pair.getFlow()));
+            } else {
+                logger.warn("hFixed <= 0, pulando par: {}", pair);
+            }
+        }
+
+        if (logH.isEmpty()) {
+            logger.warn("Listas para regressão linear estão vazias após filtragem.");
+            return new KeyCurveDTO(0, 0, h0);
+        }
+
+        return performLinearRegression(logH, logQ, h0);
+    }
+
+    private List<QuotaFlow> extractValidQuotaFlows(List<Map<String, Object>> results) {
+        List<QuotaFlow> pairs = new ArrayList<>();
+
+        for (Map<String, Object> response : results) {
+            List<Map<String, Object>> readings = (List<Map<String, Object>>) response.get("items");
+            if (readings == null) {
+                logger.warn("Nenhuma leitura encontrada no response: {}", response);
+                continue;
+            }
+
+            logger.info("Quantidade de leituras encontradas: {}", readings.size());
+
+            for (Map<String, Object> reading : readings) {
+                try {
+                    Object quotaObj = reading.get("Cota (cm)");
+                    Object flowObj = reading.get("Vazao (m3/s)");
+
+                    if (quotaObj == null || flowObj == null) {
+                        logger.warn("Campo 'Cota (cm)' ou 'Vazao (m3/s)' ausente em leitura: {}", reading);
+                        continue;
+                    }
+
+                    double quota = Double.parseDouble(quotaObj.toString());
+                    double flow = Double.parseDouble(flowObj.toString());
+
+                    if (quota > 0 && flow > 0) {
+                        pairs.add(new QuotaFlow(quota, flow));
+                    } else {
+                        logger.warn("Valores inválidos (quota <= 0 ou flow <= 0), ignorando leitura: {}", reading);
+                    }
+                } catch (NumberFormatException e) {
+                    logger.error("Erro ao converter valores numéricos na leitura: {} - erro: {}", reading, e.getMessage());
+                } catch (Exception e) {
+                    logger.error("Erro inesperado ao processar leitura: {} - erro: {}", reading, e.getMessage());
+                }
+            }
+        }
+        return pairs;
+    }
+
+    private KeyCurveDTO performLinearRegression(List<Double> logH, List<Double> logQ, double h0) {
+        int n = logH.size();
+        double sumX = 0;
+        double sumY = 0;
+        double sumXY = 0;
+        double sumX2 = 0;
+
+        for (int i = 0; i < n; i++) {
+            double x = logH.get(i);
+            double y = logQ.get(i);
+            sumX += x;
+            sumY += y;
+            sumXY += x * y;
+            sumX2 += x * x;
+        }
+
+        double denominator = (n * sumX2 - sumX * sumX);
+        if (denominator == 0) {
+            logger.error("Divisão por zero no cálculo da regressão linear, denominador = 0.");
+            return new KeyCurveDTO(0, 0, h0);
+        }
+
+        double b = (n * sumXY - sumX * sumY) / denominator;
+        double logA = (sumY - b * sumX) / n;
+        double a = Math.pow(10, logA);
+
+        logger.info("Resultado da regressão: a = {}, b = {}, h0 = {}", a, b, h0);
+
+        return new KeyCurveDTO(a, b, h0);
+    }
+    public String formatEquation(double a, double b, double h0) {
+        String aFormatted = String.format("%.4f", a);
+        String bFormatted = String.format("%.3f", b);
+        String h0Formatted = String.format("%.1f", h0);
+
+        String equation = "y = " + aFormatted + " x^" + bFormatted;
+
+        if (h0 != 0) {
+            equation += " + " + h0Formatted;
+        }
+
+        return equation;
+    }
+
 }
