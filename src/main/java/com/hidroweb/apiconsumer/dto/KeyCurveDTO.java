@@ -15,7 +15,6 @@ public class KeyCurveDTO {
         this.h0 = h0;
     }
 
-    // getters e setters dos campos
     public double getA() {
         return a;
     }

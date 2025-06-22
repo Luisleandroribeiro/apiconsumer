@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 
 @Entity
 @Table(name = "estacoes")
+
 public class Station {
 
     @Id
@@ -33,7 +34,6 @@ public class Station {
 
     @Column(name = "tipo_estacao")
     private String tipoEstacao;
-
 
     public Long getId() {
         return id;

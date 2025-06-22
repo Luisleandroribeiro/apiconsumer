@@ -22,7 +22,8 @@ public class HidroWebService {
     private final HidroWebConfig hidroWebConfig;
     private final TokenManager tokenManager;
     private final StationRepository stationRepository;
-    private static final Logger logger = LoggerFactory.getLogger(HidroWebService.class);
+    private static final Logger log = LoggerFactory.getLogger(HidroWebService.class);
+
     private static final String ITEMS_KEY = "items";
     private static final String AUTHENTICATION_TOKEN = "tokenautenticacao";
 
@@ -40,36 +41,36 @@ public class HidroWebService {
         Optional<String> tokenOpt = tokenManager.getToken();
 
         if (tokenOpt.isEmpty()) {
-            logger.info("Token expirado ou inexistente. Realizando nova autenticação...");
-            Map<String, Object> resposta = hidroWebClient.autenticar(hidroWebConfig.getIdentificador(), hidroWebConfig.getSenha());
+            log.debug("Token expired or non-existent. Performing new authentication...");
+            Map<String, Object> response = hidroWebClient.authenticate(hidroWebConfig.getIdentificador(), hidroWebConfig.getSenha());
 
-            logger.debug("Resposta da API: {}", resposta);
+            log.debug("API Response: {}", response);
 
-            if (resposta != null && resposta.containsKey(ITEMS_KEY)) {
-                Object itemsObj = resposta.get(ITEMS_KEY);
+            if (response != null && response.containsKey(ITEMS_KEY)) {
+                Object itemsObj = response.get(ITEMS_KEY);
 
                 if (itemsObj instanceof Map<?, ?> itemsMap) {
                     Object tokenObj = itemsMap.get(AUTHENTICATION_TOKEN);
 
-                    if (tokenObj instanceof String novoToken) {
-                        tokenManager.setToken(novoToken);
-                        logger.info("Novo token gerado: {}", novoToken);
-                        return Map.of(AUTHENTICATION_TOKEN, novoToken);
+                    if (tokenObj instanceof String newToken) {
+                        tokenManager.setToken(newToken);
+                        log.debug("New token generated: {}", newToken);
+                        return Map.of(AUTHENTICATION_TOKEN, newToken);
                     } else {
-                        logger.error("Falha na autenticação: token não encontrado na resposta");
-                        throw new AuthenticationHidroWebException("Token não encontrado na resposta da API.");
+                        log.debug("Authentication failed: token not found in response");
+                        throw new AuthenticationHidroWebException("Token not found in API response.");
                     }
                 } else {
-                    logger.error("Falha na autenticação: estrutura de dados inesperada");
-                    throw new AuthenticationHidroWebException("Estrutura inesperada: 'items' não é um Map.");
+                    log.debug("Authentication failed: Unexpected data structure");
+                    throw new AuthenticationHidroWebException("Unexpected structure: 'items' is not a Map.");
                 }
             } else {
-                logger.error("Falha na autenticação: resposta inválida da API");
-                throw new AuthenticationHidroWebException("Resposta inválida: chave 'items' ausente ou resposta nula.");
+                log.debug("Authentication failed: Invalid API response");
+                throw new AuthenticationHidroWebException("Invalid response: missing key 'items' or null response.");
             }
         } else {
             String token = tokenOpt.get();
-            logger.info("Token válido: {}", token);
+            log.debug("Valid token: {}", token);
             return Map.of(AUTHENTICATION_TOKEN, token);
         }
     }
@@ -80,24 +81,24 @@ public class HidroWebService {
     public void getStationsForAllStates(String authorization)  {
         List<String> ufs = List.of("AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO");
 
-        // Buscar todos os códigos existentes no banco de uma vez
-        Set<Long> codigosExistentes = stationRepository.findAllCodigosEstacao();
+        // Search for all existing codes in the database at once
+        Set<Long> existingCodes = stationRepository.findAllCodigosEstacao();
 
-        List<Station> novasEstacoes = new ArrayList<>();
+        List<Station> newStations = new ArrayList<>();
 
         for (String uf : ufs) {
-            Map<String, Object> response = hidroWebClient.getEstacoes(authorization, uf);
+            Map<String, Object> response = hidroWebClient.getStations(authorization, uf);
 
             if (response.containsKey(ITEMS_KEY)) {
-                List<Map<String, Object>> estacoes = (List<Map<String, Object>>) response.get(ITEMS_KEY);
+                List<Map<String, Object>> stations = (List<Map<String, Object>>) response.get(ITEMS_KEY);
 
-                for (Map<String, Object> est : estacoes) {
-                    String tipoEstacao = (String) est.get("Tipo_Estacao");
+                for (Map<String, Object> est : stations) {
+                    String typeStation = (String) est.get("Tipo_Estacao");
 
-                    if ("Fluviometrica".equalsIgnoreCase(tipoEstacao)) {
+                    if ("Fluviometrica".equalsIgnoreCase(typeStation)) {
                         Long codigo = Long.parseLong(est.get("codigoestacao").toString());
 
-                        if (!codigosExistentes.contains(codigo)) {
+                        if (!existingCodes.contains(codigo)) {
                             Station station = new Station();
                             station.setCodigoEstacao(codigo);
                             station.setEstacaoNome((String) est.get("Estacao_Nome"));
@@ -106,59 +107,59 @@ public class HidroWebService {
                             station.setBaciaNome((String) est.get("Bacia_Nome"));
                             station.setSubBaciaNome((String) est.get("Sub_Bacia_Nome"));
                             station.setRioNome((String) est.get("Rio_Nome"));
-                            station.setTipoEstacao(tipoEstacao);
+                            station.setTipoEstacao(typeStation);
 
-                            novasEstacoes.add(station);
-                            codigosExistentes.add(codigo); // Adiciona na lista para evitar duplicações dentro da mesma execução
+                            newStations.add(station);
+                            existingCodes.add(codigo); // Add to list to avoid duplications within the same run
                         }
                     }
                 }
             }
         }
 
-        // Salva todas as novas estações de uma vez
-        if (!novasEstacoes.isEmpty()) {
-            stationRepository.saveAll(novasEstacoes);
+        // Saves all new stations at once
+        if (!newStations.isEmpty()) {
+            stationRepository.saveAll(newStations);
         }
     }
 
     public List<Map<String, Object>> getliquidDischargeKeyCurveForId(String authorization, int codigoEstacao) {
-        List<Map<String, Object>> resultados = new ArrayList<>();
+        List<Map<String, Object>> results = new ArrayList<>();
 
-        LocalDate dataAtual = LocalDate.now();
-        LocalDate dataInicial = LocalDate.of(1970, 1, 1);
-        int diasPorRequisicao = 366;
+        LocalDate currentDate = LocalDate.now();
+        LocalDate startDate = LocalDate.of(1970, 1, 1);
+        int daysPorRequest = 366;
 
-        while (dataInicial.isBefore(dataAtual)) {
-            LocalDate dataFinal = dataInicial.plusDays(diasPorRequisicao - 1);
-            if (dataFinal.isAfter(dataAtual)) {
-                dataFinal = dataAtual;
+        while (startDate.isBefore(currentDate)) {
+            LocalDate currenteDate = startDate.plusDays(daysPorRequest - 1);
+            if (currenteDate.isAfter(currentDate)) {
+                currenteDate = currentDate;
             }
 
             Map<String, String> params = new HashMap<>();
             params.put("Código da Estação", String.valueOf(codigoEstacao));
             params.put("Tipo Filtro Data", "DATA_LEITURA");
-            params.put("Data Inicial (yyyy-MM-dd)", dataInicial.toString());
-            params.put("Data Final (yyyy-MM-dd)", dataFinal.toString());
+            params.put("Data Inicial (yyyy-MM-dd)", startDate.toString());
+            params.put("Data Final (yyyy-MM-dd)", currenteDate.toString());
 
             try {
-                Map<String, Object> resposta = hidroWebClient.getliquidDischargeKeyCurve(authorization, params);
-                resultados.add(resposta);
-                System.out.println("Sucesso: " + dataInicial + " até " + dataFinal);
+                Map<String, Object> response = hidroWebClient.getliquidDischargeKeyCurve(authorization, params);
+                results.add(response);
+                log.debug("Success: " + startDate + " to " + currenteDate);
             } catch (Exception e) {
-                System.err.println("Erro ao buscar dados entre " + dataInicial + " e " + dataFinal + ": " + e.getMessage());
+                        log.debug("Error fetching data between " + startDate + " and " + currenteDate + ": " + e.getMessage());
             }
 
-            dataInicial = dataFinal.plusDays(1);
+            startDate = currenteDate.plusDays(1);
         }
 
-        return resultados;
+        return results;
     }
     public KeyCurveDTO calculateKeyCurve(List<Map<String, Object>> results) {
         List<QuotaFlow> pairs = extractValidQuotaFlows(results);
 
         if (pairs.isEmpty()) {
-            logger.warn("Nenhum par válido (quota, flow) foi encontrado para cálculo.");
+            log.debug("No valid pair (quota, flow) was found for calculation.");
             return new KeyCurveDTO(0, 0, 0);
         }
 
@@ -172,12 +173,12 @@ public class HidroWebService {
                 logH.add(Math.log10(hFixed));
                 logQ.add(Math.log10(pair.getFlow()));
             } else {
-                logger.warn("hFixed <= 0, pulando par: {}", pair);
+                log.debug("hFixed <= 0, jumping pair: {}", pair);
             }
         }
 
         if (logH.isEmpty()) {
-            logger.warn("Listas para regressão linear estão vazias após filtragem.");
+            log.debug("Lists for linear regression are empty after filtering.");
             return new KeyCurveDTO(0, 0, h0);
         }
 
@@ -188,13 +189,13 @@ public class HidroWebService {
         List<QuotaFlow> pairs = new ArrayList<>();
 
         for (Map<String, Object> response : results) {
-            List<Map<String, Object>> readings = (List<Map<String, Object>>) response.get("items");
+            List<Map<String, Object>> readings = (List<Map<String, Object>>) response.get(ITEMS_KEY);
             if (readings == null) {
-                logger.warn("Nenhuma leitura encontrada no response: {}", response);
+                log.debug("No reading found in response: {}", response);
                 continue;
             }
 
-            logger.info("Quantidade de leituras encontradas: {}", readings.size());
+                log.debug("Number of readings found: {}", readings.size());
 
             for (Map<String, Object> reading : readings) {
                 try {
@@ -202,7 +203,7 @@ public class HidroWebService {
                     Object flowObj = reading.get("Vazao (m3/s)");
 
                     if (quotaObj == null || flowObj == null) {
-                        logger.warn("Campo 'Cota (cm)' ou 'Vazao (m3/s)' ausente em leitura: {}", reading);
+                        log.debug("'Quota (cm)' or 'Flow rate (m3/s)' field missing when reading: {}", reading);
                         continue;
                     }
 
@@ -212,12 +213,12 @@ public class HidroWebService {
                     if (quota > 0 && flow > 0) {
                         pairs.add(new QuotaFlow(quota, flow));
                     } else {
-                        logger.warn("Valores inválidos (quota <= 0 ou flow <= 0), ignorando leitura: {}", reading);
+                        log.debug("Invalid values (quota <= 0 or flow <= 0), skipping reading: {}", reading);
                     }
                 } catch (NumberFormatException e) {
-                    logger.error("Erro ao converter valores numéricos na leitura: {} - erro: {}", reading, e.getMessage());
+                    log.debug("Error converting numeric values to reading: {} - error: {}", reading, e.getMessage());
                 } catch (Exception e) {
-                    logger.error("Erro inesperado ao processar leitura: {} - erro: {}", reading, e.getMessage());
+                    log.debug("Unexpected error while processing read: {} - erro: {}", reading, e.getMessage());
                 }
             }
         }
@@ -242,7 +243,7 @@ public class HidroWebService {
 
         double denominator = (n * sumX2 - sumX * sumX);
         if (denominator == 0) {
-            logger.error("Divisão por zero no cálculo da regressão linear, denominador = 0.");
+            log.debug("Division by zero in linear regression calculation, denominator = 0.");
             return new KeyCurveDTO(0, 0, h0);
         }
 
@@ -250,7 +251,7 @@ public class HidroWebService {
         double logA = (sumY - b * sumX) / n;
         double a = Math.pow(10, logA);
 
-        logger.info("Resultado da regressão: a = {}, b = {}, h0 = {}", a, b, h0);
+        log.debug("Regression result: a = {}, b = {}, h0 = {}", a, b, h0);
 
         return new KeyCurveDTO(a, b, h0);
     }

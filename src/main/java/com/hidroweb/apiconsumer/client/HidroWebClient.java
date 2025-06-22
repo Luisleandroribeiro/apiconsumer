@@ -11,11 +11,11 @@ import java.util.Map;
 public interface HidroWebClient {
 
     @GetMapping("/EstacoesTelemetricas/OAUth/v1")
-    Map<String, Object> autenticar(@RequestHeader("Identificador") String identificador,
-                                   @RequestHeader("Senha") String senha);
+    Map<String, Object> authenticate (@RequestHeader("Identificador") String identificador,
+                                     @RequestHeader("Senha") String senha);
 
     @GetMapping("/EstacoesTelemetricas/HidroInventarioEstacoes/v1")
-    Map<String, Object> getEstacoes(@RequestHeader("Authorization") String authorization,
+    Map<String, Object> getStations (@RequestHeader("Authorization") String authorization,
                                     @RequestParam("Unidade%20Federativa") String uf);
 
     @GetMapping("/EstacoesTelemetricas/HidroSerieResumoDescarga/v1")
