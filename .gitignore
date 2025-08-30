@@ -38,3 +38,5 @@ build/
 # Ignorar arquivos de propriedades sensíveis
 application.properties
 application.yml
+/src/main/resources/.env
+.env

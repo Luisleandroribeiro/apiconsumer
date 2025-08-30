@@ -1,6 +1,6 @@
 package com.hidroweb.apiconsumer.repository;
 
-import com.hidroweb.apiconsumer.entity.Station;
+import com.hidroweb.apiconsumer.domain.Station;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 

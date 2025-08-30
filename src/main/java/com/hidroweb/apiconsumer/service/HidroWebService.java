@@ -3,11 +3,12 @@ package com.hidroweb.apiconsumer.service;
 import com.hidroweb.apiconsumer.client.HidroWebClient;
 import com.hidroweb.apiconsumer.config.HidroWebConfig;
 import com.hidroweb.apiconsumer.dto.KeyCurveDTO;
-import com.hidroweb.apiconsumer.entity.QuotaFlow;
-import com.hidroweb.apiconsumer.entity.Station;
+import com.hidroweb.apiconsumer.domain.QuotaFlow;
+import com.hidroweb.apiconsumer.domain.Station;
 import com.hidroweb.apiconsumer.exception.AuthenticationHidroWebException;
 import com.hidroweb.apiconsumer.repository.StationRepository;
 import com.hidroweb.apiconsumer.utils.TokenManager;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,7 @@ import java.time.LocalDate;
 import java.util.*;
 
 @Service
+@RequiredArgsConstructor
 public class HidroWebService {
 
     private final HidroWebClient hidroWebClient;
@@ -27,15 +29,7 @@ public class HidroWebService {
     private static final String ITEMS_KEY = "items";
     private static final String AUTHENTICATION_TOKEN = "tokenautenticacao";
 
-    public HidroWebService(HidroWebClient hidroWebClient,
-                           HidroWebConfig hidroWebConfig,
-                           TokenManager tokenManager,
-                           StationRepository stationRepository) {
-        this.hidroWebClient = hidroWebClient;
-        this.hidroWebConfig = hidroWebConfig;
-        this.tokenManager = tokenManager;
-        this.stationRepository = stationRepository;
-    }
+
 
     public Map<String, Object> authenticateUser() {
         Optional<String> tokenOpt = tokenManager.getToken();

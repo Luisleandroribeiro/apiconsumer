@@ -1,0 +1,17 @@
+services:
+  mysql:
+    image: mysql:9.4.0
+    container_name: hidroweb-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${ENV_ROOT_PASSWORD}
+      MYSQL_DATABASE: hidroweb
+      MYSQL_USER: ${ENV_MYSQL_USER}
+      MYSQL_PASSWORD: ${ENV_MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - hidroweb-db:/var/lib/mysql
+
+volumes:
+  hidroweb-db:
