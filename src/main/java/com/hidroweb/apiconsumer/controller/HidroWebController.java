@@ -38,18 +38,22 @@ public class HidroWebController {
     }
 
     @GetMapping("/liquidDischargeKeyCurve")
-    public ResponseEntity<KeyCurveDTO> liquidDischargeKeyCurve(@RequestParam("codigoEstacao") int codigoEstacao) {
+    public ResponseEntity<KeyCurveDTO> liquidDischargeKeyCurve(
+            @RequestParam("codigoEstacao") int codigoEstacao,
+            @RequestParam(value = "regressionType", defaultValue = "PowerLaw") String regressionType) {
+
         Map<String, Object> tokenResponse = hidroWebService.authenticateUser();
         String authorization = "Bearer " + tokenResponse.get("tokenautenticacao");
 
-        List<Map<String, Object>> rawResults = hidroWebService.getliquidDischargeKeyCurveForId(authorization, codigoEstacao);
+        List<Map<String, Object>> rawResults = hidroWebService.getLiquidDischargeKeyCurveForId(authorization, codigoEstacao);
 
         if (rawResults == null || rawResults.isEmpty()) {
-            return ResponseEntity.noContent().build();  // 204 se não houver dados
+            return ResponseEntity.noContent().build();
         }
 
-        KeyCurveDTO keyCurve = hidroWebService.calculateKeyCurve(rawResults);
-        String equation = hidroWebService.formatEquation(keyCurve.getA(), keyCurve.getB(), keyCurve.getH0());
+        KeyCurveDTO keyCurve = hidroWebService.calculateKeyCurve(rawResults, regressionType);
+
+        String equation = hidroWebService.formatEquation(keyCurve);
         keyCurve.setEquation(equation);
 
         return ResponseEntity.ok(keyCurve);

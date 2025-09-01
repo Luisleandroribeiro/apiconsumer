@@ -1,7 +1,7 @@
 package com.hidroweb.apiconsumer.mapper;
 
 import com.hidroweb.apiconsumer.domain.Station;
-import com.hidroweb.apiconsumer.response.StationGetResponse;
+import com.hidroweb.apiconsumer.dto.StationGetResponse;
 import org.mapstruct.Mapper;
 import org.mapstruct.MappingConstants;
 

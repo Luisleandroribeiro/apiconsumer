@@ -6,6 +6,9 @@ import com.hidroweb.apiconsumer.dto.KeyCurveDTO;
 import com.hidroweb.apiconsumer.domain.QuotaFlow;
 import com.hidroweb.apiconsumer.domain.Station;
 import com.hidroweb.apiconsumer.exception.AuthenticationHidroWebException;
+import com.hidroweb.apiconsumer.regression.RegressionFactory;
+import com.hidroweb.apiconsumer.regression.RegressionModel;
+import com.hidroweb.apiconsumer.regression.RegressionResult;
 import com.hidroweb.apiconsumer.repository.StationRepository;
 import com.hidroweb.apiconsumer.utils.TokenManager;
 import lombok.RequiredArgsConstructor;
@@ -117,150 +120,135 @@ public class HidroWebService {
         }
     }
 
-    public List<Map<String, Object>> getliquidDischargeKeyCurveForId(String authorization, int codigoEstacao) {
+    public List<Map<String, Object>> getLiquidDischargeKeyCurveForId(String authorization, int codigoEstacao) {
         List<Map<String, Object>> results = new ArrayList<>();
-
         LocalDate currentDate = LocalDate.now();
         LocalDate startDate = LocalDate.of(1970, 1, 1);
-        int daysPorRequest = 366;
+        int daysPerRequest = 366;
 
         while (startDate.isBefore(currentDate)) {
-            LocalDate currenteDate = startDate.plusDays(daysPorRequest - 1);
-            if (currenteDate.isAfter(currentDate)) {
-                currenteDate = currentDate;
+            LocalDate endDate = startDate.plusDays(daysPerRequest - 1);
+            if (endDate.isAfter(currentDate)) {
+                endDate = currentDate;
             }
 
             Map<String, String> params = new HashMap<>();
             params.put("Código da Estação", String.valueOf(codigoEstacao));
             params.put("Tipo Filtro Data", "DATA_LEITURA");
             params.put("Data Inicial (yyyy-MM-dd)", startDate.toString());
-            params.put("Data Final (yyyy-MM-dd)", currenteDate.toString());
+            params.put("Data Final (yyyy-MM-dd)", endDate.toString());
 
             try {
                 Map<String, Object> response = hidroWebClient.getliquidDischargeKeyCurve(authorization, params);
-                results.add(response);
-                log.debug("Success: " + startDate + " to " + currenteDate);
+
+                if (response != null && response.containsKey("items")) {
+                    List<Map<String, Object>> items = (List<Map<String, Object>>) response.get("items");
+                    results.addAll(items); // adiciona cada leitura individual
+                }
+
+                log.debug("Success: {} to {}", startDate, endDate);
             } catch (Exception e) {
-                        log.debug("Error fetching data between " + startDate + " and " + currenteDate + ": " + e.getMessage());
+                log.debug("Error fetching data between {} and {}: {}", startDate, endDate, e.getMessage());
             }
 
-            startDate = currenteDate.plusDays(1);
+            startDate = endDate.plusDays(1);
         }
 
         return results;
     }
-    public KeyCurveDTO calculateKeyCurve(List<Map<String, Object>> results) {
-        List<QuotaFlow> pairs = extractValidQuotaFlows(results);
 
-        if (pairs.isEmpty()) {
-            log.debug("No valid pair (quota, flow) was found for calculation.");
-            return new KeyCurveDTO(0, 0, 0);
-        }
-
-        double h0 = 0;
-        List<Double> logH = new ArrayList<>();
-        List<Double> logQ = new ArrayList<>();
-
-        for (QuotaFlow pair : pairs) {
-            double hFixed = pair.getQuota() - h0;
-            if (hFixed > 0) {
-                logH.add(Math.log10(hFixed));
-                logQ.add(Math.log10(pair.getFlow()));
-            } else {
-                log.debug("hFixed <= 0, jumping pair: {}", pair);
-            }
-        }
-
-        if (logH.isEmpty()) {
-            log.debug("Lists for linear regression are empty after filtering.");
-            return new KeyCurveDTO(0, 0, h0);
-        }
-
-        return performLinearRegression(logH, logQ, h0);
-    }
-
-    private List<QuotaFlow> extractValidQuotaFlows(List<Map<String, Object>> results) {
-        List<QuotaFlow> pairs = new ArrayList<>();
-
-        for (Map<String, Object> response : results) {
-            List<Map<String, Object>> readings = (List<Map<String, Object>>) response.get(ITEMS_KEY);
-            if (readings == null) {
-                log.debug("No reading found in response: {}", response);
-                continue;
-            }
-
-                log.debug("Number of readings found: {}", readings.size());
-
-            for (Map<String, Object> reading : readings) {
+    public List<Double> getQuotas(List<Map<String, Object>> readings) {
+        List<Double> quotas = new ArrayList<>();
+        for (Map<String, Object> reading : readings) {
+            Object quotaObj = reading.get("Cota (cm)");
+            if (quotaObj != null) {
                 try {
-                    Object quotaObj = reading.get("Cota (cm)");
-                    Object flowObj = reading.get("Vazao (m3/s)");
-
-                    if (quotaObj == null || flowObj == null) {
-                        log.debug("'Quota (cm)' or 'Flow rate (m3/s)' field missing when reading: {}", reading);
-                        continue;
-                    }
-
                     double quota = Double.parseDouble(quotaObj.toString());
-                    double flow = Double.parseDouble(flowObj.toString());
-
-                    if (quota > 0 && flow > 0) {
-                        pairs.add(new QuotaFlow(quota, flow));
-                    } else {
-                        log.debug("Invalid values (quota <= 0 or flow <= 0), skipping reading: {}", reading);
-                    }
+                    if (quota > 0) quotas.add(quota);
                 } catch (NumberFormatException e) {
-                    log.debug("Error converting numeric values to reading: {} - error: {}", reading, e.getMessage());
-                } catch (Exception e) {
-                    log.debug("Unexpected error while processing read: {} - erro: {}", reading, e.getMessage());
+                    log.debug("Invalid quota value: {}", quotaObj);
                 }
             }
         }
-        return pairs;
+        return quotas;
     }
 
-    private KeyCurveDTO performLinearRegression(List<Double> logH, List<Double> logQ, double h0) {
-        int n = logH.size();
-        double sumX = 0;
-        double sumY = 0;
-        double sumXY = 0;
-        double sumX2 = 0;
-
-        for (int i = 0; i < n; i++) {
-            double x = logH.get(i);
-            double y = logQ.get(i);
-            sumX += x;
-            sumY += y;
-            sumXY += x * y;
-            sumX2 += x * x;
+    public List<Double> getFlows(List<Map<String, Object>> readings) {
+        List<Double> flows = new ArrayList<>();
+        for (Map<String, Object> reading : readings) {
+            Object flowObj = reading.get("Vazao (m3/s)");
+            if (flowObj != null) {
+                try {
+                    double flow = Double.parseDouble(flowObj.toString());
+                    if (flow > 0) flows.add(flow);
+                } catch (NumberFormatException e) {
+                    log.debug("Invalid flow value: {}", flowObj);
+                }
+            }
         }
-
-        double denominator = (n * sumX2 - sumX * sumX);
-        if (denominator == 0) {
-            log.debug("Division by zero in linear regression calculation, denominator = 0.");
-            return new KeyCurveDTO(0, 0, h0);
-        }
-
-        double b = (n * sumXY - sumX * sumY) / denominator;
-        double logA = (sumY - b * sumX) / n;
-        double a = Math.pow(10, logA);
-
-        log.debug("Regression result: a = {}, b = {}, h0 = {}", a, b, h0);
-
-        return new KeyCurveDTO(a, b, h0);
+        return flows;
     }
-    public String formatEquation(double a, double b, double h0) {
-        String aFormatted = String.format("%.4f", a);
-        String bFormatted = String.format("%.3f", b);
-        String h0Formatted = String.format("%.1f", h0);
 
-        String equation = "y = " + aFormatted + " x^" + bFormatted;
+    /**
+     * Calculates the key curve using the selected regression model.
+     */
+    public KeyCurveDTO calculateKeyCurve(List<Map<String, Object>> readings, String regressionType) {
+        List<Double> quotas = getQuotas(readings);
+        List<Double> flows = getFlows(readings);
 
-        if (h0 != 0) {
-            equation += " + " + h0Formatted;
+        if (quotas.isEmpty() || flows.isEmpty() || quotas.size() != flows.size()) {
+            log.debug("No valid data for regression");
+            return new KeyCurveDTO(Collections.emptyList(), 0, "No data", regressionType, 0);
         }
 
-        return equation;
+        RegressionModel model = RegressionFactory.getRegressionModel(regressionType);
+        RegressionResult result = model.fit(quotas, flows);
+
+        KeyCurveDTO dto = new KeyCurveDTO();
+        dto.setCoefficients(result.getCoefficients());
+        dto.setH0(0); // se o modelo precisar de h0, ajuste aqui
+        dto.setModelName(result.getModelName());
+        dto.setRSquared(result.getRSquared());
+
+        // Formata a equação
+        String equation = formatEquation(dto);
+        dto.setEquation(equation);
+
+        return dto;
     }
+
+
+    public String formatEquation(KeyCurveDTO keyCurve) {
+        List<Double> coefs = keyCurve.getCoefficients();
+        String model = keyCurve.getModelName();
+
+        if (coefs.isEmpty()) return "No data";
+
+        StringBuilder sb = new StringBuilder();
+
+        if (model.toLowerCase().contains("polynomial")) {
+            sb.append("y = ");
+            for (int i = coefs.size() - 1; i >= 0; i--) {
+                double coef = coefs.get(i);
+                if (coef == 0) continue;
+
+                if (sb.length() > 4) { // já adicionou algum termo
+                    sb.append(coef > 0 ? " + " : " - ");
+                    coef = Math.abs(coef);
+                }
+
+                if (i == 0) sb.append(String.format("%.4f", coef));
+                else if (i == 1) sb.append(String.format("%.4f*x", coef));
+                else sb.append(String.format("%.4f*x^%d", coef, i));
+            }
+        } else { // PowerLaw ou outros modelos
+            double a = coefs.size() > 0 ? coefs.get(0) : 0;
+            double b = coefs.size() > 1 ? coefs.get(1) : 0;
+            sb.append(String.format("Q = %.4f * (h - %.4f)^%.4f", a, keyCurve.getH0(), b));
+        }
+
+        return sb.toString();
+    }
+
 
 }

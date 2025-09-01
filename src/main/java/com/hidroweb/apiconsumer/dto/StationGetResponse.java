@@ -1,4 +1,4 @@
-package com.hidroweb.apiconsumer.response;
+package com.hidroweb.apiconsumer.dto;
 
 import lombok.Builder;
 import lombok.Getter;

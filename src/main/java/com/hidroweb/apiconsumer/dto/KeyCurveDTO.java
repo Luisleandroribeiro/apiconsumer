@@ -1,49 +1,20 @@
 package com.hidroweb.apiconsumer.dto;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+import java.util.List;
+
+@Getter
+@Setter
+@AllArgsConstructor
+@NoArgsConstructor
 public class KeyCurveDTO {
-    private double a;
-    private double b;
+    private List<Double> coefficients;
     private double h0;
-
-    // adicione o campo equation:
     private String equation;
-
-    // Construtor
-    public KeyCurveDTO(double a, double b, double h0) {
-        this.a = a;
-        this.b = b;
-        this.h0 = h0;
-    }
-
-    public double getA() {
-        return a;
-    }
-
-    public void setA(double a) {
-        this.a = a;
-    }
-
-    public double getB() {
-        return b;
-    }
-
-    public void setB(double b) {
-        this.b = b;
-    }
-
-    public double getH0() {
-        return h0;
-    }
-
-    public void setH0(double h0) {
-        this.h0 = h0;
-    }
-
-    public String getEquation() {
-        return equation;
-    }
-
-    public void setEquation(String equation) {
-        this.equation = equation;
-    }
+    private String modelName;
+    private double rSquared;
 }

@@ -1,7 +1,7 @@
 package com.hidroweb.apiconsumer.controller;
 
 import com.hidroweb.apiconsumer.mapper.StationMapper;
-import com.hidroweb.apiconsumer.response.StationGetResponse;
+import com.hidroweb.apiconsumer.dto.StationGetResponse;
 import com.hidroweb.apiconsumer.service.StationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
